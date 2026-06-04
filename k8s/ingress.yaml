@@ -1,0 +1,27 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ${APP_NAME}
+  namespace: ${APP_NAME}
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/auth-url: "https://auth.apps.saba.codes/oauth2/auth"
+    nginx.ingress.kubernetes.io/auth-signin: "https://auth.apps.saba.codes/oauth2/start?rd=$scheme://$host$escaped_request_uri"
+    nginx.ingress.kubernetes.io/auth-response-headers: "X-Auth-Request-Email,X-Auth-Request-User,X-Auth-Request-Groups,X-Auth-Request-Preferred-Username"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - ${HOSTNAME}
+      secretName: ${APP_NAME}-tls
+  rules:
+    - host: ${HOSTNAME}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ${APP_NAME}
+                port:
+                  number: 80

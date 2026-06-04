@@ -1,0 +1,83 @@
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      ACR_NAME: ${{ vars.ACR_NAME }}
+      AKS_NAME: ${{ vars.AKS_NAME }}
+      AKS_RG: ${{ vars.AKS_RG }}
+      APP_NAME: ${{ github.event.repository.name }}
+      APP_HOSTNAME: ${{ vars.APP_HOSTNAME }}
+      IMAGE_TAG: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sanity check repo variables
+        run: |
+          for v in ACR_NAME AKS_NAME AKS_RG APP_HOSTNAME; do
+            if [ -z "${!v}" ]; then
+              echo "::error::Repo variable $v is not set. Run scripts/bootstrap.sh once to provision this repo."
+              exit 1
+            fi
+          done
+          echo "APP_NAME=$APP_NAME"
+          echo "IMAGE=$ACR_NAME.azurecr.io/$APP_NAME:$IMAGE_TAG"
+          echo "HOSTNAME=$APP_HOSTNAME"
+
+      - name: Azure login (OIDC, no secrets)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build and push image to ACR
+        run: |
+          az acr build \
+            --registry "$ACR_NAME" \
+            --image "$APP_NAME:$IMAGE_TAG" \
+            --image "$APP_NAME:latest" \
+            --file Dockerfile \
+            .
+
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials -g "$AKS_RG" -n "$AKS_NAME" --overwrite-existing
+          kubelogin convert-kubeconfig -l azurecli || true
+
+      - name: Render and apply manifests
+        run: |
+          export IMAGE="$ACR_NAME.azurecr.io/$APP_NAME:$IMAGE_TAG"
+          export HOSTNAME="$APP_HOSTNAME"
+          mkdir -p .rendered
+          for f in k8s/*.yaml; do
+            envsubst '${APP_NAME} ${IMAGE} ${HOSTNAME}' < "$f" > ".rendered/$(basename "$f")"
+          done
+          # Ensure namespace exists (bootstrap creates it; this is idempotent insurance).
+          kubectl create namespace "$APP_NAME" --dry-run=client -o yaml | kubectl apply -f -
+          kubectl apply -f .rendered/
+
+      - name: Wait for rollout
+        run: |
+          kubectl -n "$APP_NAME" rollout status deployment/"$APP_NAME" --timeout=180s
+
+      - name: Summary
+        run: |
+          echo "### Deployed" >> $GITHUB_STEP_SUMMARY
+          echo "- App: \`$APP_NAME\`" >> $GITHUB_STEP_SUMMARY
+          echo "- URL: https://$APP_HOSTNAME" >> $GITHUB_STEP_SUMMARY
+          echo "- Image: \`$ACR_NAME.azurecr.io/$APP_NAME:$IMAGE_TAG\`" >> $GITHUB_STEP_SUMMARY
