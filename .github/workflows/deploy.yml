@@ -15,6 +15,8 @@ permissions:
 
 jobs:
   deploy:
+    # Skip on the template repo itself; only repos created from the template should deploy.
+    if: ${{ github.event.repository.is_template == false }}
     runs-on: ubuntu-latest
     env:
       ACR_NAME: ${{ vars.ACR_NAME }}
