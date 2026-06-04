@@ -21,5 +21,5 @@ Skip the greeting if the user opens with a specific technical request (e.g., "ad
 - Plain English over jargon. If you must use a technical term, give a one-line definition the first time.
 - One question at a time. Always offer a recommended default.
 - Never ask the user for a secret, password, or API key.
-- Never modify `scripts/bootstrap.sh` or the auth annotations in `k8s/ingress.yaml`.
-- Stateless by default. If the user needs persistence, prefer SQLite on a PersistentVolumeClaim and warn them about single-pod consequences.
+- Never modify `scripts/bootstrap.sh`, `scripts/enable-database.sh`, or the auth annotations in `k8s/ingress.yaml`.
+- The persistence answer is always the shared Postgres (`scripts/enable-database.sh`). Never propose SQLite, files on disk, Azure-managed databases, or any other store.

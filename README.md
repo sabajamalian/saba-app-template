@@ -37,6 +37,7 @@ The first time you open it, you will sign in with Microsoft. After that, you sta
 
 - A web app that **only logged-in Microsoft accounts can access**. You did not write the login code; the cluster handles it.
 - A **public HTTPS URL** with a real certificate, no certificate setup on your end.
+- An **optional private database** (Postgres on the cluster). The agent will offer to set it up; if you say yes, your app gets its own database and credentials with no work from you. See `docs/DATABASE.md`.
 - Every push to `main` automatically rebuilds and redeploys. The deploy uses GitHub OIDC, so there are no passwords or API keys stored anywhere.
 - Each app lives in its own isolated Kubernetes namespace, with its own identity scoped to that namespace.
 
@@ -103,12 +104,14 @@ For experienced developers who want to skip the agent and work directly.
 ## What is in the box
 
 - `src/` - Node.js + Express app. Multi-stage Dockerfile (`node:22-alpine`, non-root, read-only rootfs).
-- `k8s/` - Deployment, Service, Ingress with the four NGINX `auth-*` annotations + cert-manager TLS. All manifests use `${APP_NAME}`, `${IMAGE}`, `${HOSTNAME}` placeholders that the workflow `envsubst`s at deploy time.
+- `k8s/` - Deployment, Service, Ingress with the four NGINX `auth-*` annotations + cert-manager TLS. The Deployment also has an optional `PG*` env block that lights up only when `enable-database.sh` has been run. All manifests use `${APP_NAME}`, `${IMAGE}`, `${HOSTNAME}` placeholders that the workflow `envsubst`s at deploy time.
 - `.github/workflows/deploy.yml` - OIDC `azure/login@v2` + `az acr build` + `kubectl apply`. Runs on push to `main`. Skips on the template repo itself.
-- `scripts/bootstrap.sh` - One-shot per-repo wiring. Idempotent.
+- `scripts/bootstrap.sh` - One-shot per-repo cluster wiring (Azure identity, OIDC federation, role assignments, namespace, Actions variables). Idempotent.
+- `scripts/enable-database.sh` - One-shot per-repo Postgres provisioning (managed role, Database CR, credentials Secret in both the postgres namespace and the app's namespace). Idempotent.
 - `AGENTS.md` - Shared cluster context that any AI agent should read before doing anything in this repo.
 - `.github/agents/app-builder.md` - The end-to-end agent for non-technical users.
 - `docs/AGENT-PLAYBOOK.md` - Long-form phase scripts referenced by the agent.
+- `docs/DATABASE.md` - Reference doc for the optional Postgres database.
 
 ## What `bootstrap.sh` does
 
@@ -137,6 +140,7 @@ curl -i http://localhost:8080/      # 418
 - Swap the app: replace `src/`. Keep `GET /healthz`.
 - Different port: update `PORT` default in `src/index.js`, the `Dockerfile` `EXPOSE`, the deployment `containerPort`, and the service `targetPort` consistently.
 - Custom hostname: `gh variable set APP_HOSTNAME --body "my-app.apps.saba.codes"`.
+- Add a database: `./scripts/enable-database.sh`. See `docs/DATABASE.md` for the connection env vars and a recommended `pg` client wrapper.
 - Extra K8s resources: drop more YAML into `k8s/`. Anything in that folder is `envsubst`'d (with `${APP_NAME}`, `${IMAGE}`, `${HOSTNAME}`) and `kubectl apply`'d.
 
 ## Constraints

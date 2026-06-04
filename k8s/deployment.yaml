@@ -31,6 +31,51 @@ spec:
           env:
             - name: APP_NAME
               value: ${APP_NAME}
+            # The block below is populated by scripts/enable-database.sh.
+            # While the secret does not exist (stateless apps), optional: true
+            # makes Kubernetes silently skip these env vars at pod start.
+            - name: PGHOST
+              valueFrom:
+                secretKeyRef:
+                  name: ${APP_NAME}-db-credentials
+                  key: host
+                  optional: true
+            - name: PGPORT
+              valueFrom:
+                secretKeyRef:
+                  name: ${APP_NAME}-db-credentials
+                  key: port
+                  optional: true
+            - name: PGDATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: ${APP_NAME}-db-credentials
+                  key: database
+                  optional: true
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef:
+                  name: ${APP_NAME}-db-credentials
+                  key: username
+                  optional: true
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ${APP_NAME}-db-credentials
+                  key: password
+                  optional: true
+            - name: PGSSLMODE
+              valueFrom:
+                secretKeyRef:
+                  name: ${APP_NAME}-db-credentials
+                  key: sslmode
+                  optional: true
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: ${APP_NAME}-db-credentials
+                  key: DATABASE_URL
+                  optional: true
           readinessProbe:
             httpGet:
               path: /healthz

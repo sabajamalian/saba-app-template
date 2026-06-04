@@ -61,9 +61,9 @@ Write `PLAN.md` at the repo root using the template in the playbook. Show it to 
 
 Replace `src/index.js` with code for the agreed features. Add views, static assets, dependencies, and Kubernetes resource changes as needed per the playbook. Run `node --check src/index.js` after edits. Show a one-screen summary of what changed.
 
-If they did not opt into persistence: keep it stateless, no PVC, no SQLite.
+If they did not opt into persistence: keep it stateless. The optional `PG*` env block in `k8s/deployment.yaml` is harmless when no DB is configured, leave it as-is.
 
-If they did: follow the persistence section in the playbook precisely (single-pod, Recreate strategy, SQLite on `/data`, write-warning).
+If they did: read `docs/DATABASE.md`, add `pg` to `src/package.json`, drop in `src/db.js` from the wrapper in DATABASE.md, call `db.migrate(...)` at startup with the schema you derived from the user's feature list, and use `db.query(...)` from your routes. The shared Postgres is the only persistence option.
 
 ### Phase 4 - Ship
 
@@ -71,20 +71,21 @@ Run the prerequisite checks from the playbook in parallel. For any failure, give
 
 Then:
 1. If `gh variable list` does not include `AZURE_CLIENT_ID`, run `./scripts/bootstrap.sh`. Translate its progress for the user.
-2. If they picked a custom hostname, `gh variable set APP_HOSTNAME --body "<host>.apps.saba.codes"`.
-3. Commit (with a sensible message) and push to `main`.
-4. `gh run watch --exit-status` to follow the deploy. While waiting, tell the user it usually takes 2 to 3 minutes.
-5. On success, tell them the URL, remind them they will sign in with Microsoft once, then SSO carries them across all apps on the cluster.
-6. On failure, read `gh run view --log-failed`, find the real error, translate it, fix the underlying issue, and re-push. Do not give up after one failure.
+2. If the user opted into persistence in Phase 1 and `gh variable list` does not include `APP_DB_ENABLED`, run `./scripts/enable-database.sh`. Translate its progress for the user. Tell them: "I just gave your app its own private database on the cluster. No setup on your end."
+3. If they picked a custom hostname, `gh variable set APP_HOSTNAME --body "<host>.apps.saba.codes"`.
+4. Commit (with a sensible message) and push to `main`.
+5. `gh run watch --exit-status` to follow the deploy. While waiting, tell the user it usually takes 2 to 3 minutes.
+6. On success, tell them the URL, remind them they will sign in with Microsoft once, then SSO carries them across all apps on the cluster.
+7. On failure, read `gh run view --log-failed`, find the real error, translate it, fix the underlying issue, and re-push. Do not give up after one failure.
 
 ## Hard rules
 
-- Never modify `scripts/bootstrap.sh`.
+- Never modify `scripts/bootstrap.sh` or `scripts/enable-database.sh`.
 - Never modify the four `nginx.ingress.kubernetes.io/auth-*` annotations in `k8s/ingress.yaml`.
 - Never modify the `cert-manager.io/cluster-issuer: letsencrypt-prod` annotation.
 - Never write a login or signup page. Auth is the cluster's job. Identify the user via `req.get('x-auth-request-email')`.
 - Never ask the user for a password, secret, or API key.
-- Never add paid Azure resources beyond the cluster (no managed databases, no Key Vault, no Front Door, etc.).
+- Never add paid Azure resources beyond the cluster (no managed databases, no Key Vault, no Front Door, etc.). The persistence answer is always the shared Postgres via `enable-database.sh`. Never propose SQLite, file storage, or anything else.
 - Never push to a branch other than `main`. The deploy workflow only runs there.
 - Never silently expand scope. If the user asked for a "list of recipes", do not also build a comments system unless they ask.
 

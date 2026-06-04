@@ -34,7 +34,7 @@ Ask one question at a time. Always include a recommended default in parentheses.
 
 2. **Audience.** "Who is going to use this? (Recommended: just you and a few people you invite.)" Choices to recognize: just me / small invited group / public-internet-facing-but-still-needs-Microsoft-login.
 
-3. **Memory.** "Does the app need to remember information between visits? For example: does it save anything, or is it a calculator-style page that runs fresh each time? (Recommended: no, keep it simple. We can add storage later.)" If yes, follow up: "Roughly what kind of information? (Recommended: a small list of items, each with a few fields.)" If they need persistence, warn: "Adding storage means the app will only run as one copy at a time, which is fine for small things."
+3. **Memory.** "Does the app need to remember information between visits? For example: does it save anything, or is it a calculator-style page that runs fresh each time? (Recommended: yes, give the app a private database on the cluster. It's free and I'll set it up for you.)" If yes, follow up: "Roughly what kind of information? (Recommended: a small list of items, each with a few fields.)"
 
 4. **Pages or actions.** "List the screens or actions you want in priority order. The first one is what people see when they open it." Capture as bullet list.
 
@@ -66,13 +66,14 @@ https://<host>.apps.saba.codes (Microsoft login required)
 ...
 
 ## Data model
-<short list, or "Stateless. The app does not save anything between visits.">
+<short list of tables and their columns, in plain English. Or "Stateless. The app does not save anything between visits.">
 
 ## What I will do next
 1. Replace the placeholder app with code for the features above.
 2. Adjust the deployment config (mostly leave it alone).
 3. Connect the repo to the cluster (one-time setup).
-4. Push to main and wait for the deploy. About 2 to 3 minutes.
+4. <If persistence>: Provision a private Postgres database on the cluster.
+5. Push to main and wait for the deploy. About 2 to 3 minutes.
 ```
 
 Show the plan to the user. Ask: "Does this look right? Any tweaks?" Do not advance until they confirm.
@@ -88,27 +89,15 @@ Show the plan to the user. Ask: "Does this look right? Any tweaks?" Do not advan
 
 ### Persistence (only if user opted in)
 
-1. Add `better-sqlite3` to `src/package.json`.
-2. Add `apk add --no-cache build-base python3` line to a new `builder` stage in the Dockerfile (sqlite native build), then COPY built node_modules into the runtime stage.
-3. Open the DB at `/data/app.db`. Create tables with `CREATE TABLE IF NOT EXISTS`.
-4. Add `k8s/pvc.yaml`:
-   ```yaml
-   apiVersion: v1
-   kind: PersistentVolumeClaim
-   metadata:
-     name: ${APP_NAME}-data
-     namespace: ${APP_NAME}
-   spec:
-     accessModes: ["ReadWriteOnce"]
-     resources:
-       requests:
-         storage: 1Gi
-   ```
-5. In `k8s/deployment.yaml`:
-   - Set `replicas: 1` and `strategy: Recreate`.
-   - Mount the PVC at `/data`.
-   - Drop `readOnlyRootFilesystem: true` only if necessary; better to keep it true and mount `/data` as the only writable path.
-6. Tell the user clearly: "Your data lives in a single 1 GB volume. If you ever delete the app, the data goes with it. Take backups by downloading from your app."
+Use the shared in-cluster Postgres. Read `docs/DATABASE.md` for the full reference.
+
+1. Add `pg` to `src/package.json` dependencies (`"pg": "^8.13.0"`).
+2. Create `src/db.js` using the wrapper from `docs/DATABASE.md` verbatim. It is intentionally small and handles the case where the database is not configured.
+3. In `src/index.js`, call `db.migrate(...)` once at startup with `CREATE TABLE IF NOT EXISTS ...` statements derived from the user's feature list. Use `email` (from `X-Auth-Request-Email`) as the natural per-user key.
+4. Use `db.query(text, params)` from your routes. Always parameterize. Never string-concatenate SQL.
+5. Do **not** add a PVC, do **not** add SQLite, do **not** change `replicas` or `strategy`. The deployment defaults already work; the optional `PG*` env block in `k8s/deployment.yaml` lights up automatically once the secret exists.
+
+After Phase 4 runs `enable-database.sh`, the env vars `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`, `PGSSLMODE`, and `DATABASE_URL` will be populated in the pods on the next deploy.
 
 ### Coding standards
 
@@ -146,11 +135,28 @@ Run these in parallel and report any failures with exact fix commands:
 If `gh variable list` does not include `AZURE_CLIENT_ID`:
 
 ```
-chmod +x scripts/bootstrap.sh
+chmod +x scripts/bootstrap.sh scripts/enable-database.sh
 ./scripts/bootstrap.sh
 ```
 
 The script is idempotent. Watch its output and translate the steps for the user ("creating an identity for your repo to talk to Azure...").
+
+### Database (only if user opted into persistence)
+
+If `gh variable list` does not include `APP_DB_ENABLED`:
+
+```
+./scripts/enable-database.sh
+```
+
+Tell the user: "I just gave your app its own private database on the shared cluster. The connection details are stored as a secret in your app's namespace and your code already knows how to read them through the env vars."
+
+The script is idempotent. If you re-run it, it reuses the existing password and just re-mirrors. To rotate the password, instruct the user (or do it yourself):
+
+```
+kubectl delete secret <repo>-db-credentials -n postgres
+./scripts/enable-database.sh
+```
 
 ### Custom hostname
 

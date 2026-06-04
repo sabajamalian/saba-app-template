@@ -51,27 +51,40 @@ If a user asks you to change one of these, push back and explain why.
 ## Files you should freely shape to fit the user's app
 
 - Everything under `src/`.
-- `k8s/deployment.yaml` resources, replicas, env vars, probes (keep `/healthz`).
+- `k8s/deployment.yaml` resources, replicas, env vars (the optional `PG*` block is fine to leave in place; it is silent when no DB is enabled), probes (keep `/healthz`).
 - `k8s/service.yaml` if you change the container port.
 - `k8s/ingress.yaml` host, path rules, and TLS secret name (NOT the auth annotations).
 - `Dockerfile` if the runtime needs change (Node version, additional system deps).
 - `README.md` to describe the app you actually built.
-- New manifests in `k8s/` (e.g., `pvc.yaml` for SQLite persistence).
+- New manifests in `k8s/` if you genuinely need them (rare; most apps need nothing beyond what is in the box).
+
+## Persistence: shared Postgres
+
+The cluster runs a shared CloudNativePG cluster called `shared-pg` in the `postgres` namespace, fronted by a PgBouncer pooler. Apps opt in by running `scripts/enable-database.sh` once, which gives the app:
+
+- A private database `app_<repo>` and a private role `<repo>_user`.
+- A Kubernetes Secret called `<repo>-db-credentials` in the app's namespace, with the keys `host`, `port`, `database`, `username`, `password`, `sslmode`, and `DATABASE_URL`.
+- The Deployment in `k8s/deployment.yaml` already references that secret with `optional: true`, so the env vars `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`, `PGSSLMODE`, and `DATABASE_URL` light up automatically once the secret exists, and stay quietly absent before that.
+
+Use the **node-postgres** library (`pg`) for Node apps. The complete client wrapper, schema-init pattern, and debugging recipes are in `docs/DATABASE.md`. Do not introduce a different database, an ORM, or a separate cache unless the user explicitly asks.
+
+This is the **only** persistence pattern this template supports. Do not add SQLite, do not mount PVCs from the app's namespace, do not use Azure Storage or Cosmos DB. If the user wants persistence, run `scripts/enable-database.sh`.
 
 ## Constraints
 
-- No paid Azure resources beyond what the cluster provides. No managed databases, no Key Vault, no extra ingress controllers, no Front Door, no Application Gateway.
-- No long-lived secrets anywhere. All Azure auth uses GitHub OIDC federation set up by `bootstrap.sh`.
-- Stateless by default. If the user needs persistence, use SQLite on a PersistentVolumeClaim and warn them this means single-pod (`replicas: 1`, `strategy: Recreate`).
+- No paid Azure resources beyond what the cluster provides. No managed databases, no Key Vault, no extra ingress controllers, no Front Door, no Application Gateway. The shared in-cluster Postgres is the persistence story; do not propose alternatives.
+- No long-lived secrets anywhere. All Azure auth uses GitHub OIDC federation set up by `bootstrap.sh`. The Postgres credentials are auto-generated and live as Kubernetes Secrets only.
+- Stateless by default. If the user needs persistence, run `scripts/enable-database.sh` and use the env vars it provides; everything else is off limits.
 - Image base is `node:22-alpine`, non-root, read-only rootfs. If you need a writable directory, mount an `emptyDir` volume; do not relax the security context.
 - Do not ask the user for any password, API key, or token. The only credentials they may need are `gh auth login` and `az login`, which they run in their own terminal.
 
 ## How to deploy (after edits)
 
 1. Ensure `bootstrap.sh` has been run (check with `gh variable list | grep AZURE_CLIENT_ID`). If not, run it.
-2. Commit and push to `main`.
-3. Watch the Actions run with `gh run watch`.
-4. App is live at `https://<APP_HOSTNAME-from-repo-vars>` once the workflow goes green.
+2. If the app needs a database, ensure `enable-database.sh` has been run (check with `gh variable list | grep APP_DB_ENABLED` or `[ -f .db-enabled ]`). If not, run it.
+3. Commit and push to `main`.
+4. Watch the Actions run with `gh run watch`.
+5. App is live at `https://<APP_HOSTNAME-from-repo-vars>` once the workflow goes green.
 
 ## Starting point for non-technical users
 
