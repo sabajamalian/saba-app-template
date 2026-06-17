@@ -1,58 +1,60 @@
 # Agent playbook
 
-Reference companion to `.github/agents/app-builder.md`. The agent reads this file when it needs deeper guidance for a specific phase. Keeping the long-form scripts here makes the agent file scannable.
+Reference companion to `.github/agents/app-builder.md`. The agent reads this file for detailed phase guidance.
 
 ## Phase 0: Greet and orient
 
-Run these checks first, in parallel, with a single tool call:
+Run these checks in parallel:
 
-- `gh repo view --json name,owner,isTemplate` -> get the slug.
-- `gh variable list 2>/dev/null` -> if `AZURE_CLIENT_ID` is present, bootstrap has already been run.
-- `git status --porcelain` and `git log --oneline -5` -> have they edited anything yet?
-- `grep -q "I'm a teapot" src/index.js && echo unchanged || echo modified` -> is the app still the template?
+```bash
+gh repo view --json name,owner,isTemplate 2>/dev/null
+git status --porcelain
+git log --oneline -5
+grep -q "I'm a teapot" src/index.js && echo "unchanged" || echo "modified"
+[ -f PLAN.md ] && echo "PLAN_EXISTS" || echo "NO_PLAN"
+```
 
 Decide entry point:
 
-| Signal | Branch |
+| Signal | Action |
 | ------ | ------ |
-| Unchanged template, no bootstrap | Phase 1 (Discover). |
-| Unchanged template, bootstrap done | Phase 1 but skip the bootstrap step in Phase 4. |
-| App already modified, no `PLAN.md` | Ask "are you continuing previous work, or starting over?" before deciding. |
-| `PLAN.md` exists | Read it; resume mid-flow. |
+| Unchanged template, no PLAN.md | Start at Phase 1 (Discover). |
+| App modified, no PLAN.md | Ask "are you continuing previous work, or starting over?" |
+| PLAN.md exists | Read it and resume mid-flow. |
 
-Open with this exact tone:
+Open with:
 
-> Hi. I'm going to help you turn an idea into a live website. I'll ask a few short questions, then build and deploy it for you. You won't need to write any code. Ready?
+> Hi. I am going to help you turn an idea into a live website. I will ask a few short questions, then build and deploy it for you. You will not need to write any code. Ready?
 
 ## Phase 1: Discover
 
-Ask one question at a time. Always include a recommended default in parentheses. Acknowledge the answer in one short sentence before asking the next question.
+Ask one question at a time. Include a recommended default. Acknowledge the answer before asking the next question.
 
-### Question script
+### Questions
 
-1. **Idea.** "In one or two sentences, what would you like to build? (For example: a personal recipe notebook, a stand-up status board for my team, or a public sign-up form for a workshop.)" If they say "I don't know", offer the three examples and ask them to pick one.
+1. **Idea.** "In one or two sentences, what would you like to build?"
 
-2. **Audience.** "Who is going to use this? (Recommended: just you and a few people you invite.)" Choices to recognize: just me / small invited group / public-internet-facing-but-still-needs-Microsoft-login.
+2. **Audience.** "Who is going to use this? (Recommended: just you and a few people you invite.)"
 
-3. **Memory.** "Does the app need to remember information between visits? For example: does it save anything, or is it a calculator-style page that runs fresh each time? (Recommended: yes, give the app a private database on the cluster. It's free and I'll set it up for you.)" If yes, follow up: "Roughly what kind of information? (Recommended: a small list of items, each with a few fields.)"
+3. **Memory.** "Does the app need to remember information between visits? For example, does it save anything? (Recommended: yes, give the app a private database.)"
 
-4. **Pages or actions.** "List the screens or actions you want in priority order. The first one is what people see when they open it." Capture as bullet list.
+4. **Pages or actions.** "List the screens or actions you want in priority order. The first one is what people see when they open it."
 
-5. **URL.** "Your default web address will be `https://<repo-name>.apps.saba.codes`. Is that fine, or do you want a different name?" If they pick a different name, warn that DNS is wildcard so any name works, but it has to be lowercase, letters/digits/dashes, no spaces.
+5. **URL.** "Your default web address will be `https://<repo-name>.apps.saba.codes`. Is that fine, or do you want a different name?"
 
-6. **Name.** "And what should we call the app inside the page (the title shown to visitors)?"
+6. **Name.** "What should we call the app (the title shown to visitors)?"
 
-Keep notes in scratch state; do not write to disk yet.
+Keep notes in memory. Do not write to disk yet.
 
 ## Phase 2: Plan
 
-Write a `PLAN.md` at the repo root. Format:
+Write `PLAN.md` at the repo root:
 
 ```markdown
 # <App title>
 
 ## What it is
-<one paragraph in the user's words, cleaned up>
+<one paragraph in the user's words>
 
 ## Who uses it
 <audience>
@@ -66,132 +68,91 @@ https://<host>.apps.saba.codes (Microsoft login required)
 ...
 
 ## Data model
-<short list of tables and their columns, in plain English. Or "Stateless. The app does not save anything between visits.">
+<tables and columns, or "Stateless. The app does not save anything.">
 
-## What I will do next
-1. Replace the placeholder app with code for the features above.
-2. Adjust the deployment config (mostly leave it alone).
-3. Connect the repo to the cluster (one-time setup).
-4. <If persistence>: Provision a private Postgres database on the cluster.
-5. Push to main and wait for the deploy. About 2 to 3 minutes.
+## What happens next
+1. Replace the placeholder app with code for these features.
+2. Push to main.
+3. GitHub Actions deploys automatically (about 2 minutes).
 ```
 
-Show the plan to the user. Ask: "Does this look right? Any tweaks?" Do not advance until they confirm.
+Show the plan. Ask: "Does this look right?" Do not advance until they confirm.
 
 ## Phase 3: Build
 
 ### Defaults
 
-- Express + EJS templates (already in `package.json` if you add `ejs`). Static assets in `public/`.
-- All pages render server-side. Use Tailwind via CDN if the user wants visual polish, otherwise plain CSS in `public/style.css`.
-- Use `req.get('x-auth-request-email')` to identify the user. Provide a top-right "Signed in as <email>" banner on every page.
-- For lists/forms (the common case): in-memory `Map` keyed by user email if "per-user" data, plain array if "shared" data. Switch to SQLite if user opted in (see persistence section).
+- Express + EJS templates. Static assets in `public/`.
+- Server-side rendering. Tailwind via CDN for styling if needed.
+- Use `req.get('x-auth-request-email')` to identify the user. Show "Signed in as <email>" on every page.
+- For stateless apps: in-memory storage is fine.
+- For persistent apps: use the `pg` library and the wrapper in `docs/DATABASE.md`.
 
-### Persistence (only if user opted in)
+### Persistence
 
-Use the shared in-cluster Postgres. Read `docs/DATABASE.md` for the full reference.
+If the user wants to save data:
 
-1. Add `pg` to `src/package.json` dependencies (`"pg": "^8.13.0"`).
-2. Create `src/db.js` using the wrapper from `docs/DATABASE.md` verbatim. It is intentionally small and handles the case where the database is not configured.
-3. In `src/index.js`, call `db.migrate(...)` once at startup with `CREATE TABLE IF NOT EXISTS ...` statements derived from the user's feature list. Use `email` (from `X-Auth-Request-Email`) as the natural per-user key.
-4. Use `db.query(text, params)` from your routes. Always parameterize. Never string-concatenate SQL.
-5. Do **not** add a PVC, do **not** add SQLite, do **not** change `replicas` or `strategy`. The deployment defaults already work; the optional `PG*` env block in `k8s/deployment.yaml` lights up automatically once the secret exists.
+1. Add `pg` to `src/package.json`.
+2. Create `src/db.js` using the wrapper from `docs/DATABASE.md`.
+3. In `src/index.js`, call `db.migrate(...)` at startup.
+4. Use `db.query(text, params)` from routes.
 
-After Phase 4 runs `enable-database.sh`, the env vars `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`, `PGSSLMODE`, and `DATABASE_URL` will be populated in the pods on the next deploy.
+Tell the user: "I have added database support to the code. Before it works, you will need to ask Saba to enable the database for your app."
 
-### Coding standards
+**Do not run enable-database.sh yourself.** You do not have kubectl access.
 
-- All routes use `async`/`await` with try/catch.
-- HTML output is escaped (use EJS `<%= %>` not `<%- %>` unless you trust the source).
-- No client-side JavaScript dependencies unless asked.
-- Never write a login page. Auth is the cluster's job.
-- After edits, run `node --check src/index.js` to syntax-check.
+### After editing
 
-### Show progress
+Run `node --check src/index.js` to syntax-check.
 
-Print a short "What I changed" summary after editing:
+Show a summary:
 ```
 Changed:
-  src/index.js               (rewrote app with 3 routes)
+  src/index.js               (rewrote with 3 routes)
   src/views/index.ejs        (new)
   src/package.json           (added ejs)
-  k8s/deployment.yaml        (replicas 2 -> 1)
 README.md updated.
 ```
 
 ## Phase 4: Ship
 
-### Prerequisite checks
+This is simple because the repo is already wired via Innovation Seed.
 
-Run these in parallel and report any failures with exact fix commands:
+### Steps
 
-- `gh auth status` -> if not logged in: "Please run `gh auth login` and pick GitHub.com -> HTTPS -> yes auth git -> login with browser. Then say 'continue'."
-- `az account show --query tenantId -o tsv` -> compare to tenant ID. If wrong tenant or not logged in: "Please run `az login --tenant d0401efd-a66a-4265-88d8-7d7801dda24e` and say 'continue'."
-- `kubectl get nodes 2>&1` -> if it fails: "I need cluster access. Run `az aks get-credentials -g rg-aks-saba-eastus -n aks-saba-eastus` and say 'continue'."
-- `command -v jq && command -v envsubst` -> install via brew if missing.
+1. **Commit:**
+   ```bash
+   git add -A
+   git commit -m "Build <app title>"
+   ```
 
-### Bootstrap
+2. **Push:**
+   ```bash
+   git push origin main
+   ```
 
-If `gh variable list` does not include `AZURE_CLIENT_ID`:
+3. **Watch the deploy:**
+   ```bash
+   gh run watch --exit-status
+   ```
+   Tell the user it takes about 2 minutes.
 
-```
-chmod +x scripts/bootstrap.sh scripts/enable-database.sh
-./scripts/bootstrap.sh
-```
+4. **On success:** Give them the URL. Remind them they sign in with Microsoft once.
 
-The script is idempotent. Watch its output and translate the steps for the user ("creating an identity for your repo to talk to Azure...").
+5. **On failure:** Read `gh run view --log-failed`, find the error, translate it, fix the code, and re-push.
 
-### Database (only if user opted into persistence)
+### What NOT to do
 
-If `gh variable list` does not include `APP_DB_ENABLED`:
+- Do not run `./scripts/bootstrap.sh`. The repo is already configured.
+- Do not run `./scripts/enable-database.sh`. You do not have kubectl access.
+- Do not run any `az` or `kubectl` commands.
 
-```
-./scripts/enable-database.sh
-```
+If the user needs database access enabled, tell them to ask Saba.
 
-Tell the user: "I just gave your app its own private database on the shared cluster. The connection details are stored as a secret in your app's namespace and your code already knows how to read them through the env vars."
+## Anti-patterns
 
-The script is idempotent. If you re-run it, it reuses the existing password and just re-mirrors. To rotate the password, instruct the user (or do it yourself):
-
-```
-kubectl delete secret <repo>-db-credentials -n postgres
-./scripts/enable-database.sh
-```
-
-### Custom hostname
-
-If the user picked a hostname other than the repo name:
-```
-gh variable set APP_HOSTNAME --body "<their-host>.apps.saba.codes"
-```
-
-### Commit and push
-
-```
-git add -A
-git commit -m "Build <app title> from idea to deployable app"
-git push origin main
-```
-
-Use a co-author trailer if available.
-
-### Watch the deploy
-
-```
-gh run watch --exit-status
-```
-
-When the workflow goes green:
-- Tell the user the URL.
-- Remind them: "The first time you open it, you'll be asked to sign in with Microsoft. After that, it's instant."
-- Offer next steps: "Want to add a feature? Just tell me what."
-
-If the workflow fails: read `gh run view --log-failed`, find the actual error, translate it for the user, fix it, and re-push.
-
-## Anti-patterns to avoid
-
-- Long monologues. Keep messages under 6 lines unless presenting the plan.
-- Asking for confirmation on every tiny step. Confirm at phase boundaries only.
-- Surfacing raw stack traces or YAML to the user. Translate.
-- Adding optional dependencies "in case". Only add what the agreed features need.
-- Suggesting "you could also...". Stay focused on what they asked for.
+- Long monologues. Keep messages under 6 lines.
+- Asking for confirmation on every tiny step.
+- Surfacing raw stack traces or YAML.
+- Adding dependencies "just in case".
+- Suggesting "you could also..." Stay focused on what they asked for.

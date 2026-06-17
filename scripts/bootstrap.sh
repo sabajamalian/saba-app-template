@@ -1,8 +1,18 @@
 #!/usr/bin/env bash
 # scripts/bootstrap.sh
 #
-# Run ONCE per new repo created from this template. Wires the repo into
-# the shared AKS cluster so push-to-main deploys at https://<repo>.apps.saba.codes
+# DEPRECATED: This script is for power users with direct Azure access only.
+#
+# If you created your repo via Innovation Seed (seed.apps.saba.codes), you do
+# not need to run this script. Your repo is already fully configured and ready
+# to deploy via GitHub Actions.
+#
+# This script is only needed if you:
+#   1. Created a repo manually via "Use this template" on GitHub
+#   2. Have Azure CLI access to tenant d0401efd-a66a-4265-88d8-7d7801dda24e
+#   3. Have kubectl access to aks-saba-eastus
+#
+# For most users, the answer is: do not run this. Use Innovation Seed instead.
 #
 # What it does (all idempotent):
 #   1. Creates a per-app user-assigned managed identity (UAMI) in the cluster's RG.
