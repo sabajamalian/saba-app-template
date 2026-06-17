@@ -28,9 +28,19 @@ spec:
           ports:
             - name: http
               containerPort: 8080
+          envFrom:
+            # Idea metadata (IDEA_DESCRIPTION, IDEA_CREATOR_LOGIN, ...) populated
+            # by the Innovation Seed orchestrator and built into a ConfigMap at
+            # deploy time. Optional so apps that drop the default landing page
+            # don't need to keep the ConfigMap around.
+            - configMapRef:
+                name: ${APP_NAME}-idea
+                optional: true
           env:
             - name: APP_NAME
               value: ${APP_NAME}
+            - name: APP_HOSTNAME
+              value: ${HOSTNAME}
             # The block below is populated by scripts/enable-database.sh.
             # While the secret does not exist (stateless apps), optional: true
             # makes Kubernetes silently skip these env vars at pod start.

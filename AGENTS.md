@@ -54,8 +54,8 @@ If someone asks you to change these, explain why you cannot.
 
 ## Files you can freely modify
 
-- Everything under `src/`.
-- `k8s/deployment.yaml` (resources, replicas, env vars, probes).
+- Everything under `src/`, including `src/views/landing.js` (the placeholder "your idea is planted" welcome page). Replace it with your own app as soon as you have a real UI.
+- `k8s/deployment.yaml` (resources, replicas, env vars, probes). The `envFrom` reference to the `<app>-idea` ConfigMap is only used by the default landing page and can be removed once you replace it.
 - `k8s/service.yaml` if you change the container port.
 - `k8s/ingress.yaml` host and path rules (not the auth annotations).
 - `Dockerfile` if the runtime needs to change.

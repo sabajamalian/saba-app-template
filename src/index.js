@@ -1,8 +1,19 @@
 const express = require('express');
+const { render: renderLanding } = require('./views/landing');
 
 const app = express();
 const APP_NAME = process.env.APP_NAME || 'saba-app';
 const PORT = parseInt(process.env.PORT || '8080', 10);
+
+// Idea metadata, populated by the Innovation Seed orchestrator as repo variables
+// and forwarded into the pod by the deploy workflow + k8s/deployment.yaml.
+// Any missing value just makes the corresponding section degrade gracefully.
+const IDEA_DESCRIPTION = process.env.IDEA_DESCRIPTION || '';
+const IDEA_CREATOR_LOGIN = process.env.IDEA_CREATOR_LOGIN || '';
+const IDEA_CREATOR_AVATAR_URL = process.env.IDEA_CREATOR_AVATAR_URL || '';
+const IDEA_CREATED_AT = process.env.IDEA_CREATED_AT || '';
+const IDEA_REPO_URL = process.env.IDEA_REPO_URL || '';
+const APP_HOSTNAME = process.env.APP_HOSTNAME || '';
 
 app.disable('x-powered-by');
 app.set('trust proxy', true);
@@ -28,16 +39,23 @@ app.get('/me', (req, res) => {
   });
 });
 
-// Default route: HTTP 418 so it's obvious you've hit the template app.
+// Default route: a friendly "your idea is planted" landing page. Designed to be
+// replaced by the user (with help from Copilot) as soon as they start building.
 app.get('/', (req, res) => {
-  const email = req.get('x-auth-request-email');
-  res.status(418).type('text/plain').send(
-    `I'm a teapot.\n\n` +
-    `app:   ${APP_NAME}\n` +
-    `who:   ${email || '(unauthenticated - check ingress annotations)'}\n` +
-    `try:   GET /me   -> identity headers\n` +
-    `       GET /healthz -> liveness\n`
-  );
+  const html = renderLanding({
+    appName: APP_NAME,
+    hostname: APP_HOSTNAME,
+    repoUrl: IDEA_REPO_URL,
+    actionsUrl: IDEA_REPO_URL ? `${IDEA_REPO_URL.replace(/\/$/, '')}/actions` : '',
+    email: req.get('x-auth-request-email') || '',
+    preferredUsername: req.get('x-auth-request-preferred-username') || '',
+    user: req.get('x-auth-request-user') || '',
+    idea: IDEA_DESCRIPTION,
+    creatorLogin: IDEA_CREATOR_LOGIN,
+    creatorAvatarUrl: IDEA_CREATOR_AVATAR_URL,
+    createdAt: IDEA_CREATED_AT,
+  });
+  res.status(200).type('text/html; charset=utf-8').send(html);
 });
 
 app.listen(PORT, () => {

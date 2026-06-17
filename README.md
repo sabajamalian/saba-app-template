@@ -14,6 +14,8 @@ That's it. You now have a new repository under your GitHub account, fully config
 https://<your-app-name>.apps.saba.codes
 ```
 
+The first deploy lands on a friendly "your idea is planted" welcome page that shows your idea, who planted it, what just happened behind the scenes, and how to keep going with Copilot. That page lives in `src/index.js` and `src/views/landing.js`; replace it with your own app as soon as you're ready.
+
 ## Building your app
 
 Open your new repository in GitHub Copilot CLI:

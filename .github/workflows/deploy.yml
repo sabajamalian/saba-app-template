@@ -25,6 +25,12 @@ jobs:
       APP_NAME: ${{ github.event.repository.name }}
       APP_HOSTNAME: ${{ vars.APP_HOSTNAME }}
       IMAGE_TAG: ${{ github.sha }}
+      # Idea metadata, set by the Innovation Seed orchestrator. Safe to leave
+      # empty; the template's landing page degrades gracefully when missing.
+      IDEA_DESCRIPTION: ${{ vars.IDEA_DESCRIPTION }}
+      IDEA_CREATOR_LOGIN: ${{ vars.IDEA_CREATOR_LOGIN }}
+      IDEA_CREATOR_AVATAR_URL: ${{ vars.IDEA_CREATOR_AVATAR_URL }}
+      IDEA_CREATED_AT: ${{ vars.IDEA_CREATED_AT }}
     steps:
       - uses: actions/checkout@v4
 
@@ -65,12 +71,23 @@ jobs:
         run: |
           export IMAGE="$ACR_NAME.azurecr.io/$APP_NAME:$IMAGE_TAG"
           export HOSTNAME="$APP_HOSTNAME"
+          IDEA_REPO_URL="${{ github.server_url }}/${{ github.repository }}"
           mkdir -p .rendered
           for f in k8s/*.yaml; do
             envsubst '${APP_NAME} ${IMAGE} ${HOSTNAME}' < "$f" > ".rendered/$(basename "$f")"
           done
           # Ensure namespace exists (bootstrap creates it; this is idempotent insurance).
           kubectl create namespace "$APP_NAME" --dry-run=client -o yaml | kubectl apply -f -
+          # Build the idea ConfigMap with kubectl so arbitrary text (newlines,
+          # quotes, colons) in IDEA_DESCRIPTION is encoded safely.
+          kubectl create configmap "$APP_NAME-idea" \
+            --namespace "$APP_NAME" \
+            --from-literal=IDEA_DESCRIPTION="${IDEA_DESCRIPTION:-}" \
+            --from-literal=IDEA_CREATOR_LOGIN="${IDEA_CREATOR_LOGIN:-}" \
+            --from-literal=IDEA_CREATOR_AVATAR_URL="${IDEA_CREATOR_AVATAR_URL:-}" \
+            --from-literal=IDEA_CREATED_AT="${IDEA_CREATED_AT:-}" \
+            --from-literal=IDEA_REPO_URL="$IDEA_REPO_URL" \
+            --dry-run=client -o yaml | kubectl apply -f -
           kubectl apply -f .rendered/
 
       - name: Wait for rollout
