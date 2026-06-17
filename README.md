@@ -1,68 +1,56 @@
 # saba-app-template
 
-A starting point for a brand-new web app that runs on a shared Kubernetes cluster, with **Microsoft login already wired in for you**. Click "Use this template", clone the new repo, run one command, and answer a few questions in plain English. A live, password-protected website comes out the other side.
+A starting point for a web app that runs on a shared Kubernetes cluster with Microsoft login already wired in. Plant a seed, describe your idea, and a live URL comes out the other side.
 
-## Quick start (no coding required)
+## Quick start
 
-You will need three things installed on your computer once. After that, every new app from this template is a few minutes of conversation.
+1. Go to **[seed.apps.saba.codes](https://seed.apps.saba.codes)** and sign in with GitHub.
+2. Pick a short, lowercase name for your app (like `recipe-notebook` or `team-standup`).
+3. Click **Plant the seed**.
 
-1. [`gh`](https://cli.github.com/) - GitHub's command-line tool. After installing, run `gh auth login` and pick GitHub.com.
-2. [`az`](https://learn.microsoft.com/cli/azure/install-azure-cli) - Microsoft Azure's command-line tool. After installing, run `az login --tenant d0401efd-a66a-4265-88d8-7d7801dda24e`.
-3. [`copilot`](https://docs.github.com/copilot/github-copilot-cli) - the GitHub Copilot CLI.
-
-Then, for each new app:
-
-1. On GitHub, click **Use this template** -> **Create a new repository**. Pick a short, lowercase, dash-separated name like `recipe-notebook` or `team-standup`. That name becomes your app's URL.
-2. Clone it to your computer:
-   ```bash
-   gh repo clone <your-username>/<your-new-repo>
-   cd <your-new-repo>
-   ```
-3. Start the agent:
-   ```bash
-   copilot
-   /agents app-builder
-   ```
-4. The **app-builder** agent will say hi, ask you a few short questions about what you want to build, write a plan for you to approve, build the app, and deploy it. The whole flow is conversational. You never have to look at code or YAML.
-
-When it finishes, your app is live at:
+That's it. You now have a new repository under your GitHub account, fully configured to deploy. Your app will be live at:
 
 ```
-https://<your-new-repo>.apps.saba.codes
+https://<your-app-name>.apps.saba.codes
 ```
 
-The first time you open it, you will sign in with Microsoft. After that, you stay signed in across every app on this cluster.
+## Building your app
+
+Open your new repository in GitHub Copilot CLI:
+
+```bash
+gh repo clone <your-username>/<your-app-name>
+cd <your-app-name>
+copilot
+```
+
+Then say something like:
+
+> Build me a personal recipe notebook where I can save and search my favorite recipes.
+
+The **app-builder** agent will ask a few questions, write a plan, build the code, and deploy it. The whole flow is conversational. You never need to touch Azure, Kubernetes, or deployment configs.
+
+When you push changes to `main`, GitHub Actions automatically builds and deploys your app. No local tools required beyond `git` and optionally `copilot`.
 
 ## What you get
 
-- A web app that **only logged-in Microsoft accounts can access**. You did not write the login code; the cluster handles it.
-- A **public HTTPS URL** with a real certificate, no certificate setup on your end.
-- An **optional private database** (Postgres on the cluster). The agent will offer to set it up; if you say yes, your app gets its own database and credentials with no work from you. See `docs/DATABASE.md`.
-- Every push to `main` automatically rebuilds and redeploys. The deploy uses GitHub OIDC, so there are no passwords or API keys stored anywhere.
-- Each app lives in its own isolated Kubernetes namespace, with its own identity scoped to that namespace.
+- A web app protected by **Microsoft login**. You did not write the login code; the cluster handles it.
+- A **public HTTPS URL** with a real certificate.
+- An **optional private database** (Postgres). The agent will offer to set it up if your app needs to save data.
+- **Automatic deployments**: push to `main` and your app updates in about 2 minutes.
+- Each app runs in its own isolated namespace with its own identity.
 
-## Adding more features later
+## How auth works
 
-Just open the repo, run `copilot`, and tell it what you want. The agent (or any future Copilot session) reads `AGENTS.md` and the existing `PLAN.md` to know the cluster's rules and your app's current state. You can say things like:
+The cluster handles authentication. Your app receives trusted headers on every request:
 
-- "Add a page that lists my notes sorted by date."
-- "Make the homepage show the user's name in the corner."
-- "Add an Atom feed at /feed."
+| Header | What it is |
+| ------ | ---------- |
+| `X-Auth-Request-Email` | Signed-in email (e.g., `alice@contoso.com`) |
+| `X-Auth-Request-User` | Stable user ID |
+| `X-Auth-Request-Preferred-Username` | Display name |
 
-It will edit the code, push, and confirm when the new version is live.
-
-## Reading the signed-in user inside your app
-
-The cluster injects four trusted request headers on every request to your app. Use them, and never write a login page yourself.
-
-| Header | What it is | Example |
-| ------ | ---------- | ------- |
-| `X-Auth-Request-Email` | Signed-in email | `alice@contoso.com` |
-| `X-Auth-Request-User` | Stable user ID (Entra object ID) | `Nuz3mgDggFnRUK5m...` |
-| `X-Auth-Request-Preferred-Username` | Username for display | `alice@contoso.com` |
-| `X-Auth-Request-Groups` | Comma-separated group names (only if enabled on the Entra app) | `eng,admins` |
-
-In Express:
+In your code:
 
 ```js
 app.get('/me', (req, res) => {
@@ -70,85 +58,76 @@ app.get('/me', (req, res) => {
 });
 ```
 
-These headers are only set in production. To simulate them locally:
+Never write a login page. The cluster does that for you.
+
+## Adding features later
+
+Just open your repo, run `copilot`, and describe what you want:
+
+- "Add a page that lists my notes sorted by date."
+- "Make the homepage show the user's name in the corner."
+- "Add an Atom feed at /feed."
+
+The agent edits the code, pushes to `main`, and confirms when the new version is live.
+
+## Running locally (optional)
+
+If you want to test changes before pushing:
+
+```bash
+cd src
+npm install
+npm run dev
+```
+
+Your app runs at `http://localhost:8080`. The auth headers won't be present locally, so simulate them:
 
 ```bash
 curl -H 'X-Auth-Request-Email: me@example.com' http://localhost:8080/me
 ```
 
-## Built-in routes
+## Deleting your app
 
-Out of the box this template ships an Express "teapot" app:
-
-- `GET /` -> HTTP 418 with a teapot message and the signed-in user's email.
-- `GET /me` -> JSON with the user's identity.
-- `GET /healthz` -> `200 OK`, used by Kubernetes for liveness/readiness.
-
-You can keep, replace, or extend any of these. The agent will replace `/` and `/me` to match your idea while leaving `/healthz` alone.
-
-## Tearing down an app
+Ask Saba to tear it down, or if you have cluster access:
 
 ```bash
-kubectl delete namespace <repo-name>
-az identity delete -g rg-aks-saba-eastus -n id-app-<repo-name>
+kubectl delete namespace <app-name>
 ```
-
-DNS is wildcard, so removing the Kubernetes resources is enough to take the URL offline.
 
 ---
 
-# Advanced
+<details>
+<summary><strong>Advanced: Manual setup (requires Azure access)</strong></summary>
 
-For experienced developers who want to skip the agent and work directly.
+This section is for users who have Azure CLI access and want to set up a repo manually instead of using Innovation Seed.
 
-## What is in the box
+### Prerequisites
 
-- `src/` - Node.js + Express app. Multi-stage Dockerfile (`node:22-alpine`, non-root, read-only rootfs).
-- `k8s/` - Deployment, Service, Ingress with the four NGINX `auth-*` annotations + cert-manager TLS. The Deployment also has an optional `PG*` env block that lights up only when `enable-database.sh` has been run. All manifests use `${APP_NAME}`, `${IMAGE}`, `${HOSTNAME}` placeholders that the workflow `envsubst`s at deploy time.
-- `.github/workflows/deploy.yml` - OIDC `azure/login@v2` + `az acr build` + `kubectl apply`. Runs on push to `main`. Skips on the template repo itself.
-- `scripts/bootstrap.sh` - One-shot per-repo cluster wiring (Azure identity, OIDC federation, role assignments, namespace, Actions variables). Idempotent.
-- `scripts/enable-database.sh` - One-shot per-repo Postgres provisioning (managed role, Database CR, credentials Secret in both the postgres namespace and the app's namespace). Idempotent.
-- `AGENTS.md` - Shared cluster context that any AI agent should read before doing anything in this repo.
-- `.github/agents/app-builder.md` - The end-to-end agent for non-technical users.
-- `docs/AGENT-PLAYBOOK.md` - Long-form phase scripts referenced by the agent.
-- `docs/DATABASE.md` - Reference doc for the optional Postgres database.
+- `gh` CLI, logged in to GitHub
+- `az` CLI, logged in to tenant `d0401efd-a66a-4265-88d8-7d7801dda24e`
+- `kubectl` with cluster credentials
+- `jq`
 
-## What `bootstrap.sh` does
+### Steps
 
-Idempotent. Safe to re-run.
+1. Click **Use this template** on GitHub to create a new repo.
+2. Clone it locally.
+3. Run `./scripts/bootstrap.sh` to wire the repo to the cluster.
+4. Push to `main`.
 
-| Step | Action |
-| ---- | ------ |
-| 1 | Creates user-assigned managed identity `id-app-<repo>` in `rg-aks-saba-eastus`. |
-| 2 | Federates that identity to GitHub OIDC for `repo:<owner>/<repo>:ref:refs/heads/main`. |
-| 3 | Grants `AcrPush` on `acrsabaeastus`. |
-| 4 | Grants `Azure Kubernetes Service Cluster User Role` on `aks-saba-eastus`. |
-| 5 | Creates K8s namespace `<repo>` and a `RoleBinding` granting your identity `edit` rights only in that namespace. |
-| 6 | Sets repo Actions Variables: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `ACR_NAME`, `AKS_NAME`, `AKS_RG`, `APP_HOSTNAME`. No secrets. |
+The bootstrap script creates a managed identity, federates it to GitHub OIDC, grants permissions, creates a namespace, and sets the Actions variables.
 
-## Local dev
+### Database (optional)
+
+If your app needs persistence:
 
 ```bash
-cd src
-npm install
-APP_NAME=local npm run dev
-curl -i http://localhost:8080/      # 418
+./scripts/enable-database.sh
 ```
 
-## Customizing manually
+This creates a private Postgres database and injects credentials into your app's environment.
 
-- Swap the app: replace `src/`. Keep `GET /healthz`.
-- Different port: update `PORT` default in `src/index.js`, the `Dockerfile` `EXPOSE`, the deployment `containerPort`, and the service `targetPort` consistently.
-- Custom hostname: `gh variable set APP_HOSTNAME --body "my-app.apps.saba.codes"`.
-- Add a database: `./scripts/enable-database.sh`. See `docs/DATABASE.md` for the connection env vars and a recommended `pg` client wrapper.
-- Extra K8s resources: drop more YAML into `k8s/`. Anything in that folder is `envsubst`'d (with `${APP_NAME}`, `${IMAGE}`, `${HOSTNAME}`) and `kubectl apply`'d.
-
-## Constraints
-
-- No long-lived Azure credentials anywhere. OIDC only.
-- Each app has its own managed identity, scoped to its own K8s namespace.
-- ACR is shared across all apps on this cluster.
-- The Entra app registration is single-tenant; only members and guests of the cluster's Entra tenant can log in. Invite external collaborators with `az ad user invite`.
+</details>
 
 ## License
 
