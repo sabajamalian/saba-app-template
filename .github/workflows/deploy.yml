@@ -77,26 +77,28 @@ jobs:
       - name: Build and push image to ACR
         if: steps.sanity.outputs.skip != 'true'
         run: |
-          # Retry to ride out RBAC propagation: when a brand-new managed identity
-          # gets AcrPush, Azure sometimes takes a few minutes before the role is
-          # observable. The error in that window is "resource not found".
+          # Use 'docker build + docker push' rather than 'az acr build' because
+          # the per-app UAMI only has AcrPush, which permits push but does NOT
+          # include 'Microsoft.ContainerRegistry/registries/scheduleRun/action'
+          # required to queue an ACR Task. 'az acr build' would 404 in that
+          # case (Azure hides resources you cannot act on). 'az acr login'
+          # exchanges the AAD token for a docker registry credential.
           attempt=1
-          max=8
-          until az acr build \
-              --registry "$ACR_NAME" \
-              --image "$APP_NAME:$IMAGE_TAG" \
-              --image "$APP_NAME:latest" \
-              --file Dockerfile \
-              .; do
+          max=6
+          until az acr login --name "$ACR_NAME"; do
             if [ "$attempt" -ge "$max" ]; then
-              echo "::error::az acr build failed after $attempt attempts"
+              echo "::error::az acr login failed after $attempt attempts"
               exit 1
             fi
-            sleep_for=$((attempt * 30))
-            echo "az acr build failed (attempt $attempt/$max). Sleeping ${sleep_for}s and retrying..."
+            sleep_for=$((attempt * 20))
+            echo "az acr login failed (attempt $attempt/$max). Sleeping ${sleep_for}s..."
             sleep "$sleep_for"
             attempt=$((attempt + 1))
           done
+          IMAGE_FQDN="$ACR_NAME.azurecr.io/$APP_NAME"
+          docker build -t "$IMAGE_FQDN:$IMAGE_TAG" -t "$IMAGE_FQDN:latest" -f Dockerfile .
+          docker push "$IMAGE_FQDN:$IMAGE_TAG"
+          docker push "$IMAGE_FQDN:latest"
 
       - name: Get AKS credentials
         if: steps.sanity.outputs.skip != 'true'
