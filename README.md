@@ -90,7 +90,7 @@ curl -H 'X-Auth-Request-Email: me@example.com' http://localhost:8080/me
 
 ## Deleting your app
 
-Ask Saba to tear it down, or if you have cluster access:
+To delete your planted idea, deprovision its cluster resources, and remove the GitHub repo:
 
 ```bash
 kubectl delete namespace <app-name>
