@@ -2,7 +2,8 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY src/package.json ./package.json
-RUN --mount=type=cache,target=/root/.npm npm install --omit=dev --no-audit --no-fund
+# No --mount=type=cache: ACR Tasks builds without BuildKit enabled.
+RUN npm install --omit=dev --no-audit --no-fund
 
 FROM node:22-alpine AS runtime
 ENV NODE_ENV=production
