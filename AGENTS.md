@@ -63,9 +63,9 @@ If someone asks you to change these, explain why you cannot.
 
 ## Persistence: shared Postgres
 
-**Every app gets its own private Postgres database automatically.** Innovation Seed provisions it when the idea is planted, so the database already exists by the time you start building. You do not need to enable anything or ask anyone.
+**Apps planted via Innovation Seed get their own private Postgres database automatically.** The orchestrator provisions it when the idea is planted, so the database already exists by the time you start building. You do not need to enable anything or ask anyone. (Repos created manually with "Use this template" run `scripts/enable-database.sh` once instead.)
 
-These environment variables are present in every pod (injected from the `<app>-db-credentials` secret):
+These environment variables are injected from the `<app>-db-credentials` secret (its keys are referenced as `optional` in `k8s/deployment.yaml`, so they are present whenever the secret exists, which is the normal case for a planted app):
 - `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`
 - `DATABASE_URL`
 

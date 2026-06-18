@@ -2,7 +2,7 @@
 
 Every app created from this template gets its own **private Postgres database** on the shared cluster. It is shared infrastructure (everyone's apps run on the same Postgres cluster), but each app gets its own database and its own login, completely isolated from every other app.
 
-**You do not need to enable it.** Innovation Seed provisions the database when the idea is planted, so the credentials are already injected into your pod. Just use them.
+**If you planted via Innovation Seed, you do not need to enable it.** The orchestrator provisions the database when the idea is planted, so the credentials are already injected into your pod. Just use them. (Repos created manually with "Use this template" instead run `scripts/enable-database.sh` once; see the fallback section below.)
 
 ## TL;DR
 
@@ -64,14 +64,21 @@ function hasPgSettings() {
   );
 }
 
+function sslModeFrom(url) {
+  const m = /[?&]sslmode=([^&]+)/.exec(url || '');
+  return m ? m[1].toLowerCase() : '';
+}
+
 function getPool() {
   if (pool) return pool;
   if (!process.env.DATABASE_URL && !hasPgSettings()) return null;
 
+  const sslmode = (sslModeFrom(process.env.DATABASE_URL) || process.env.PGSSLMODE || '').toLowerCase();
+
   let config;
   if (process.env.DATABASE_URL) {
-    // The shared pooler presents a self-signed cert; strip sslmode (it would
-    // turn on chain verification) and configure TLS ourselves below.
+    // Strip sslmode and configure TLS ourselves below so sslmode=require does
+    // not turn on full certificate chain verification.
     const url = process.env.DATABASE_URL.replace(
       /([?&])sslmode=[^&]*(&|$)/g, (_, pre, post) => (post === '&' ? pre : ''),
     );
@@ -85,7 +92,13 @@ function getPool() {
       password: process.env.PGPASSWORD,
     };
   }
-  config.ssl = { rejectUnauthorized: false };
+
+  if (sslmode === 'disable') {
+    config.ssl = false; // explicit opt-out, e.g. local dev
+  } else {
+    // In-cluster Postgres uses TLS with a self-signed cert: skip verification.
+    config.ssl = { rejectUnauthorized: false };
+  }
 
   pool = new Pool({
     ...config,

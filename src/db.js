@@ -20,15 +20,21 @@ function hasPgSettings() {
   );
 }
 
+function sslModeFrom(url) {
+  const m = /[?&]sslmode=([^&]+)/.exec(url || '');
+  return m ? m[1].toLowerCase() : '';
+}
+
 function getPool() {
   if (pool) return pool;
   if (!process.env.DATABASE_URL && !hasPgSettings()) return null;
 
+  const sslmode = (sslModeFrom(process.env.DATABASE_URL) || process.env.PGSSLMODE || '').toLowerCase();
+
   let config;
   if (process.env.DATABASE_URL) {
-    // The shared pooler presents a self-signed certificate. Strip sslmode from
-    // the URL (sslmode=require would otherwise turn on chain verification and
-    // fail) and configure TLS ourselves below.
+    // Strip sslmode from the URL and configure TLS ourselves below, so that
+    // sslmode=require does not turn on full certificate chain verification.
     const url = process.env.DATABASE_URL.replace(
       /([?&])sslmode=[^&]*(&|$)/g,
       (_, pre, post) => (post === '&' ? pre : ''),
@@ -43,8 +49,15 @@ function getPool() {
       password: process.env.PGPASSWORD,
     };
   }
-  // In-cluster Postgres is reachable only over TLS, with a self-signed cert.
-  config.ssl = { rejectUnauthorized: false };
+
+  if (sslmode === 'disable') {
+    // Explicit opt-out, e.g. local dev against a plain Postgres.
+    config.ssl = false;
+  } else {
+    // In-cluster Postgres requires TLS but presents a self-signed certificate,
+    // so skip chain verification. This is the default for the shared cluster.
+    config.ssl = { rejectUnauthorized: false };
+  }
 
   pool = new Pool({
     ...config,

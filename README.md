@@ -38,7 +38,7 @@ When you push changes to `main`, GitHub Actions automatically builds and deploys
 
 - A web app protected by **Microsoft login**. You did not write the login code; the cluster handles it.
 - A **public HTTPS URL** with a real certificate.
-- A **private database** (Postgres). Provisioned automatically for every app; just use `src/db.js`.
+- A **private database** (Postgres). Provisioned automatically for apps planted via Innovation Seed; just use `src/db.js`.
 - **Automatic deployments**: push to `main` and your app updates in about 2 minutes.
 - Each app runs in its own isolated namespace with its own identity.
 
