@@ -8,11 +8,13 @@ RUN npm install --omit=dev --no-audit --no-fund
 FROM node:22-alpine AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
-RUN addgroup -S app && adduser -S app -G app
+# Use a numeric UID so Kubernetes' runAsNonRoot can verify non-root identity
+# without resolving /etc/passwd. UID 10001 is conventional for app users.
+RUN addgroup -S -g 10001 app && adduser -S -u 10001 -G app app
 COPY --from=deps /app/node_modules ./node_modules
 COPY src ./src
 COPY src/package.json ./package.json
-USER app
+USER 10001
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
   CMD wget -qO- http://127.0.0.1:8080/healthz || exit 1
