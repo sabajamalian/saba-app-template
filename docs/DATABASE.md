@@ -1,22 +1,24 @@
 # Database guide
 
-This template can give your app a **private Postgres database** that lives on the same Kubernetes cluster as the app. It is shared infrastructure (everyone's apps run on the same Postgres cluster), but each app gets its own database and its own login, completely isolated from every other app.
+Every app created from this template gets its own **private Postgres database** on the shared cluster. It is shared infrastructure (everyone's apps run on the same Postgres cluster), but each app gets its own database and its own login, completely isolated from every other app.
+
+**If you planted via Innovation Seed, you do not need to enable it.** The orchestrator provisions the database when the idea is planted, so the credentials are already injected into your pod. Just use them. (Repos created manually with "Use this template" instead run `scripts/enable-database.sh` once; see the fallback section below.)
 
 ## TL;DR
 
-```bash
-./scripts/bootstrap.sh        # one-time cluster wiring (already done if you used the agent)
-./scripts/enable-database.sh  # one-time database provisioning
-git push                      # next deploy picks up the new env vars
-```
-
-After that, in your app you can just:
+The template already ships `pg` and `src/db.js`. In your app:
 
 ```js
-const { Pool } = require('pg');
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-const { rows } = await pool.query('SELECT now()');
+const db = require('./db');
+
+await db.migrate(`CREATE TABLE IF NOT EXISTS notes (
+  id SERIAL PRIMARY KEY, body TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);`);
+
+const { rows } = await db.query('SELECT * FROM notes ORDER BY created_at DESC');
 ```
+
+That's it. No scripts, no setup, no "ask Saba."
 
 ## What you get
 
@@ -26,15 +28,12 @@ const { rows } = await pool.query('SELECT now()');
 | Database role | `<repo>_user` (same normalization) |
 | Host | `shared-pg-pooler.postgres.svc.cluster.local` |
 | Port | `5432` |
-| SSL | required |
+| SSL | required (self-signed cert; `src/db.js` handles this) |
 | Owner | your role owns its database, with full DDL/DML rights, and cannot see other apps' databases |
 
 ## Environment variables in your pods
 
-`scripts/enable-database.sh` writes a Kubernetes Secret called `<repo>-db-credentials` into your app's namespace. The Deployment in `k8s/deployment.yaml` references that secret with **optional** keys, so:
-
-- If you have not run `enable-database.sh`, the secret does not exist and the env vars are simply absent. Your stateless app is unaffected.
-- After you run it and redeploy, your pods see all of these:
+Innovation Seed creates a Kubernetes Secret called `<repo>-db-credentials` in your app's namespace at plant time. The Deployment in `k8s/deployment.yaml` references it with **optional** keys, so your pods see all of these:
 
 | Env var | Example |
 | ------- | ------- |
@@ -42,19 +41,15 @@ const { rows } = await pool.query('SELECT now()');
 | `PGPORT` | `5432` |
 | `PGDATABASE` | `app_recipe_notebook` |
 | `PGUSER` | `recipe_notebook_user` |
-| `PGPASSWORD` | `(40 random hex chars)` |
+| `PGPASSWORD` | `(random hex chars)` |
 | `PGSSLMODE` | `require` |
 | `DATABASE_URL` | `postgresql://recipe_notebook_user:...@shared-pg-pooler.postgres.svc.cluster.local:5432/app_recipe_notebook?sslmode=require` |
 
-## Recommended Node.js client
+`src/db.js` accepts either `DATABASE_URL` or the individual `PG*` variables, so both are available to you.
 
-Add the dep:
+## The Node.js client
 
-```bash
-cd src && npm install pg
-```
-
-Drop this in `src/db.js`:
+`pg` is already a dependency and `src/db.js` is already committed. The wrapper looks like this:
 
 ```js
 // src/db.js - small wrapper over node-postgres with retry-on-startup.
@@ -62,11 +57,51 @@ const { Pool } = require('pg');
 
 let pool = null;
 
+function hasPgSettings() {
+  return Boolean(
+    process.env.PGHOST && process.env.PGDATABASE
+      && process.env.PGUSER && process.env.PGPASSWORD,
+  );
+}
+
+function sslModeFrom(url) {
+  const m = /[?&]sslmode=([^&]+)/.exec(url || '');
+  return m ? m[1].toLowerCase() : '';
+}
+
 function getPool() {
-  if (!process.env.DATABASE_URL) return null;
   if (pool) return pool;
+  if (!process.env.DATABASE_URL && !hasPgSettings()) return null;
+
+  const sslmode = (sslModeFrom(process.env.DATABASE_URL) || process.env.PGSSLMODE || '').toLowerCase();
+
+  let config;
+  if (process.env.DATABASE_URL) {
+    // Strip sslmode and configure TLS ourselves below so sslmode=require does
+    // not turn on full certificate chain verification.
+    const url = process.env.DATABASE_URL.replace(
+      /([?&])sslmode=[^&]*(&|$)/g, (_, pre, post) => (post === '&' ? pre : ''),
+    );
+    config = { connectionString: url };
+  } else {
+    config = {
+      host: process.env.PGHOST,
+      port: parseInt(process.env.PGPORT || '5432', 10),
+      database: process.env.PGDATABASE,
+      user: process.env.PGUSER,
+      password: process.env.PGPASSWORD,
+    };
+  }
+
+  if (sslmode === 'disable') {
+    config.ssl = false; // explicit opt-out, e.g. local dev
+  } else {
+    // In-cluster Postgres uses TLS with a self-signed cert: skip verification.
+    config.ssl = { rejectUnauthorized: false };
+  }
+
   pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
+    ...config,
     max: 10,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 5_000,
@@ -95,12 +130,12 @@ async function migrate(sql) {
 
 async function query(text, params) {
   const p = getPool();
-  if (!p) throw new Error('Database not configured. Run scripts/enable-database.sh.');
+  if (!p) throw new Error('Database not configured: no DATABASE_URL or PG* environment variables.');
   return p.query(text, params);
 }
 
 function hasDatabase() {
-  return !!process.env.DATABASE_URL;
+  return Boolean(process.env.DATABASE_URL || hasPgSettings());
 }
 
 module.exports = { getPool, query, migrate, hasDatabase };
@@ -133,6 +168,12 @@ app.post('/notes', async (req, res) => {
   res.json(rows[0]);
 });
 ```
+
+## How provisioning works (and the manual fallback)
+
+For repos created through Innovation Seed, the orchestrator provisions the database automatically when the idea is planted: it creates the managed role on the shared cluster, applies the per-app `Database` resource, and writes the `<repo>-db-credentials` secret into your app namespace. You do nothing.
+
+`scripts/enable-database.sh` does the same thing by hand. It is a **fallback** only for repos created manually with "Use this template" (not through Innovation Seed), or for cluster operators. It requires Azure and `kubectl` access that app authors do not have. If you planted via Innovation Seed, ignore it.
 
 ## Connecting from your laptop (debugging)
 

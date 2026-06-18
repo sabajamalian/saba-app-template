@@ -86,20 +86,18 @@ Show the plan. Ask: "Does this look right?" Do not advance until they confirm.
 - Server-side rendering. Tailwind via CDN for styling if needed.
 - Use `req.get('x-auth-request-email')` to identify the user. Show "Signed in as <email>" on every page.
 - For stateless apps: in-memory storage is fine.
-- For persistent apps: use the `pg` library and the wrapper in `docs/DATABASE.md`.
+- Every app has a private Postgres database by default. `pg` and `src/db.js` ship with the template.
 
 ### Persistence
 
+A private Postgres database is provisioned automatically when the idea is planted, and the credentials are injected into the pod. There is nothing to enable.
+
 If the user wants to save data:
 
-1. Add `pg` to `src/package.json`.
-2. Create `src/db.js` using the wrapper from `docs/DATABASE.md`.
-3. In `src/index.js`, call `db.migrate(...)` at startup.
-4. Use `db.query(text, params)` from routes.
+1. In `src/index.js`, `const db = require('./db');` and call `db.migrate(...)` at startup with `CREATE TABLE IF NOT EXISTS ...`.
+2. Use `db.query(text, params)` from routes.
 
-Tell the user: "I have added database support to the code. Before it works, you will need to ask Saba to enable the database for your app."
-
-**Do not run enable-database.sh yourself.** You do not have kubectl access.
+It works on the first deploy. Never tell the user to ask Saba or to run `enable-database.sh`.
 
 ### After editing
 
@@ -144,10 +142,10 @@ This is simple because the repo is already wired via Innovation Seed.
 ### What NOT to do
 
 - Do not run `./scripts/bootstrap.sh`. The repo is already configured.
-- Do not run `./scripts/enable-database.sh`. You do not have kubectl access.
+- Do not run `./scripts/enable-database.sh`. The database is already provisioned, and you do not have kubectl access.
 - Do not run any `az` or `kubectl` commands.
 
-If the user needs database access enabled, tell them to ask Saba.
+The database is ready for every app. You never need to enable it or ask anyone to.
 
 ## Anti-patterns
 

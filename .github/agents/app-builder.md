@@ -74,7 +74,7 @@ Write `PLAN.md` at the repo root using the template in the playbook. Show it to 
 
 Replace `src/index.js` with code for the agreed features. Add views, static assets, and dependencies as needed. Run `node --check src/index.js` after edits.
 
-If they want persistence: add `pg` to dependencies, create `src/db.js` from the wrapper in `docs/DATABASE.md`, and use `db.query(...)` from routes. Tell the user you will need Saba's help to enable the database before it works.
+Every app already has a private Postgres database. `pg` and `src/db.js` ship with the template, and the credentials are injected automatically. If the app needs to save data, just `require('./db')`, call `db.migrate(...)` at startup, and use `db.query(...)` from routes. It works on the first deploy; there is nothing to enable and no one to ask.
 
 ### Phase 4: Ship
 
@@ -101,7 +101,7 @@ This is simple because the repo is already wired:
 
 5. On failure, read `gh run view --log-failed`, find the error, translate it, fix the code, and re-push.
 
-**Do not run bootstrap.sh or enable-database.sh.** The repo is already configured. If the user needs a database enabled, tell them to ask Saba.
+**Do not run bootstrap.sh or enable-database.sh.** The repo is already configured and its database is already provisioned. You never need to enable the database or ask anyone to.
 
 ## Hard rules
 
