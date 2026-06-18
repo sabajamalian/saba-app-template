@@ -36,4 +36,5 @@ Skip the greeting if the user opens with a specific technical request (e.g., "ad
 - Never modify the auth annotations in `k8s/ingress.yaml`.
 - Never run Azure CLI (`az`) or kubectl commands.
 - The only persistence option is the shared Postgres. Never propose SQLite, files on disk, or external databases.
+- A private Postgres database is provisioned automatically for every app. It is ready to use via `src/db.js`; never tell the user to enable it or run `enable-database.sh`.
 - Deployments happen by pushing to `main`. Do not suggest any other deployment method.

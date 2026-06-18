@@ -38,7 +38,7 @@ When you push changes to `main`, GitHub Actions automatically builds and deploys
 
 - A web app protected by **Microsoft login**. You did not write the login code; the cluster handles it.
 - A **public HTTPS URL** with a real certificate.
-- An **optional private database** (Postgres). The agent will offer to set it up if your app needs to save data.
+- A **private database** (Postgres). Provisioned automatically for every app; just use `src/db.js`.
 - **Automatic deployments**: push to `main` and your app updates in about 2 minutes.
 - Each app runs in its own isolated namespace with its own identity.
 
@@ -119,9 +119,11 @@ This section is for users who have Azure CLI access and want to set up a repo ma
 
 The bootstrap script creates a managed identity, federates it to GitHub OIDC, grants permissions, creates a namespace, and sets the Actions variables.
 
-### Database (optional)
+### Database
 
-If your app needs persistence:
+Every app gets a private Postgres database automatically when it is planted via Innovation Seed, with credentials injected into the pod. Use it through `src/db.js` (see `docs/DATABASE.md`).
+
+For repos created manually with "Use this template" (not via Innovation Seed), provision it once as a fallback:
 
 ```bash
 ./scripts/enable-database.sh

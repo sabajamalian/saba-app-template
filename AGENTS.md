@@ -63,13 +63,21 @@ If someone asks you to change these, explain why you cannot.
 
 ## Persistence: shared Postgres
 
-The cluster has a shared Postgres database. Apps can request a private database by asking Saba to run `enable-database.sh` on their behalf.
+**Every app gets its own private Postgres database automatically.** Innovation Seed provisions it when the idea is planted, so the database already exists by the time you start building. You do not need to enable anything or ask anyone.
 
-If database access is configured, these environment variables are available:
+These environment variables are present in every pod (injected from the `<app>-db-credentials` secret):
 - `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`
 - `DATABASE_URL`
 
-Use the `pg` library for Node apps. See `docs/DATABASE.md` for the client wrapper.
+The template ships `src/db.js` (a small wrapper over the `pg` library) and `pg` is already a dependency. Use it directly:
+
+```js
+const db = require('./db');
+await db.migrate(`CREATE TABLE IF NOT EXISTS notes (id SERIAL PRIMARY KEY, body TEXT);`);
+const { rows } = await db.query('SELECT * FROM notes');
+```
+
+See `docs/DATABASE.md` for details.
 
 **Do not add SQLite, file-based storage, or external databases.** The shared Postgres is the only persistence option.
 
@@ -78,7 +86,7 @@ Use the `pg` library for Node apps. See `docs/DATABASE.md` for the client wrappe
 - **No Azure CLI or kubectl commands.** Deployments happen via GitHub Actions.
 - **No login pages.** Auth is the cluster's job.
 - **No secrets in code.** OIDC federation handles authentication to Azure.
-- **Stateless by default.** If persistence is needed, use the shared Postgres.
+- **A private Postgres database is provisioned automatically.** Use it via `src/db.js`; never tell the user to enable it or run a script.
 - **Push to main only.** The deploy workflow only runs on the main branch.
 
 ## How to deploy changes

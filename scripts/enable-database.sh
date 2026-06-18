@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # scripts/enable-database.sh
 #
+# FALLBACK ONLY. Repos created through Innovation Seed get their database
+# provisioned automatically at plant time, so you do not need this. Use this
+# script only for repos created manually with "Use this template", or for
+# operator tasks (password rotation). Requires Azure + kubectl access.
+#
 # Run ONCE per repo to add a private Postgres database to this app.
 # Run AFTER scripts/bootstrap.sh. Idempotent - safe to re-run.
 #
