@@ -231,7 +231,7 @@ copilot</pre>
         <li><strong>Microsoft login</strong> at the front door. You're reading this page because the cluster already authenticated you and forwarded your identity in <code class="inline">X-Auth-Request-*</code> headers.</li>
         <li>A <strong>public HTTPS URL</strong> with a real certificate (managed by cert-manager).</li>
         <li>An <strong>isolated namespace</strong> and a <strong>per-app managed identity</strong> with only the rights it needs.</li>
-        <li>An <strong>optional Postgres database</strong>. Ask Saba to enable it when your app needs to remember things.</li>
+        <li>An <strong>optional Postgres database</strong> that GitHub Copilot may provision when your app needs to persist data.</li>
       </ul>
     </section>
 
